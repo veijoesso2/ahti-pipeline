@@ -1,0 +1,8 @@
+name = "ahti-tracer-api"
+main = "tracer-worker.js"
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ahti-tracer"
+database_id = "f40a8735-240f-48b6-a7f9-08cfd303ae6e"
