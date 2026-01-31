@@ -12,6 +12,7 @@ pipeline_v16.log
 *.pmtiles
 *.pbf
 input/
+._*
 
 # --- SYSTEM & TEMP ---
 .DS_Store
