@@ -1,0 +1,19 @@
+# --- SENSITIVE DATA ---
+# Exclude scripts containing DB passwords (like run_pipeline_uusimaa.sh)
+
+# --- PIPELINE LOGS ---
+*.log
+pipeline_v16.log
+
+# --- LOCAL DATA EXPORTS ---
+# These are often too large for GitHub (MBs or GBs)
+*.json
+*.gz
+*.pmtiles
+*.pbf
+input/
+
+# --- SYSTEM & TEMP ---
+.DS_Store
+__pycache__/
+tmp

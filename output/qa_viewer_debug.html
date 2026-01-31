@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ahti Debug: Connector Logic</title>
+    <script src='https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css' rel='stylesheet' />
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #legend {
+            position: absolute; top: 20px; right: 20px; 
+            background: white; padding: 15px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 250px;
+            z-index: 100;
+        }
+        .item { margin-bottom: 8px; display: flex; align-items: center; font-size: 13px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; display: inline-block; }
+        .line { width: 20px; height: 4px; margin-right: 8px; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div id="legend">
+        <h3>🔍 Connector Debugger</h3>
+        
+        <h4>Logic Decisions (Dots)</h4>
+        <div class="item">
+            <span class="dot" style="background: #22c55e; border: 2px solid white; box-shadow: 0 0 0 1px black;"></span>
+            <strong>True Terminal</strong> (Connect Here!)
+        </div>
+        <div class="item">
+            <span class="dot" style="background: #ef4444;"></span>
+            <strong>Junction/Loop</strong> (Do Not Connect)
+        </div>
+        <div class="item">
+            <span class="dot" style="background: #94a3b8;"></span>
+            <strong>Continuation</strong> (River Flow)
+        </div>
+
+        <h4>Current Result (Lines)</h4>
+        <div class="item">
+            <span class="line" style="background: #0ea5e9;"></span>
+            Generated Connector
+        </div>
+        <div class="item">
+            <span class="line" style="background: #f59e0b;"></span>
+            River Segment
+        </div>
+    </div>
+    
+    <div id="map"></div>
+
+    <script>
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: {
+                version: 8,
+                sources: {
+                    'carto': { type: 'raster', tiles: ['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'], tileSize: 256 }
+                },
+                layers: [{ id: 'base', type: 'raster', source: 'carto' }]
+            },
+            center: [24.0, 60.0], // Uusimaa approximate
+            zoom: 10
+        });
+
+        map.on('load', async () => {
+            try {
+                // Load Debug Data
+                const res = await fetch('./debug_data.json');
+                const data = await res.json();
+                
+                map.addSource('debug', { type: 'geojson', data: data });
+
+                // 1. RIVERS (Background)
+                map.addLayer({
+                    id: 'rivers', type: 'line', source: 'debug',
+                    filter: ['==', 'debug_type', 'river'],
+                    paint: { 'line-color': '#f59e0b', 'line-width': 3, 'line-opacity': 0.5 }
+                });
+
+                // 2. CONNECTORS (The Issue)
+                map.addLayer({
+                    id: 'connectors', type: 'line', source: 'debug',
+                    filter: ['==', 'debug_type', 'connector'],
+                    paint: { 'line-color': '#0ea5e9', 'line-width': 4, 'line-dasharray': [2, 1] }
+                });
+
+                // 3. DEBUG POINTS: CONTINUATION (Grey)
+                map.addLayer({
+                    id: 'pts-cont', type: 'circle', source: 'debug',
+                    filter: ['==', 'status', 'continuation'],
+                    paint: { 'circle-color': '#94a3b8', 'circle-radius': 3 }
+                });
+
+                // 4. DEBUG POINTS: JUNCTIONS (Red)
+                // If a blue line comes out of a red dot, logic is failing.
+                map.addLayer({
+                    id: 'pts-fail', type: 'circle', source: 'debug',
+                    filter: ['==', 'status', 'junction_cluster'],
+                    paint: { 'circle-color': '#ef4444', 'circle-radius': 6, 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' }
+                });
+
+                // 5. DEBUG POINTS: VALID (Green)
+                // Only these should have blue lines.
+                map.addLayer({
+                    id: 'pts-valid', type: 'circle', source: 'debug',
+                    filter: ['==', 'status', 'valid_terminal'],
+                    paint: { 'circle-color': '#22c55e', 'circle-radius': 8, 'circle-stroke-width': 2, 'circle-stroke-color': '#000' }
+                });
+
+            } catch (e) { console.error(e); alert("Load failed. Check console."); }
+        });
+    </script>
+</body>
+</html>

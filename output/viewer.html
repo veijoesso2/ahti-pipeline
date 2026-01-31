@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>sAhti Tracer: Finland Detailed Build</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/pmtiles@2.11.0/dist/index.js"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        .legend {
+            position: absolute; bottom: 30px; left: 20px;
+            background: white; padding: 15px; border-radius: 8px;
+            font-family: sans-serif; box-shadow: 0 0 15px rgba(0,0,0,0.2);
+        }
+        .color-box { display: inline-block; width: 20px; height: 10px; margin-right: 5px; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="legend">
+        <strong>Paddling Quality</strong><br>
+        <span class="color-box" style="background: #0077be;"></span> High Fun (Forest)<br>
+        <span class="color-box" style="background: #888888;"></span> Low Fun (Urban/Field)<br>
+        <small>Click segments for details</small>
+    </div>
+
+<script>
+        // 1. Initialize PMTiles Protocol correctly
+        const protocol = new pmtiles.Protocol();
+        // FIX 1: Use protocol.tile instead of protocol.add for registration
+        maplibregl.addProtocol("pmtiles", protocol.tile); 
+
+        // 2. Point to your CORS server (Use the Mac Mini's real IP here)
+        // FIX 2: If accessing from your MacBook, 'localhost' points to the laptop.
+        // Replace with 192.168.1.84 or the current IP from `hostname -I`
+        //const PMTILES_URL = "http://192.168.1.84:8080/finland.pmtiles";
+        const PMTILES_URL = "./finland.pmtiles";
+
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: {
+                version: 8,
+                sources: {
+                    'paddling': {
+                        type: 'vector',
+                        url: `pmtiles://${PMTILES_URL}`, // The protocol will now handle this correctly
+                        attribution: '© OpenStreetMap contributors'
+                    }
+                },
+                 layers: [
+                    {
+                        "id": "background",
+                        "type": "background",
+                        "paint": { "background-color": "#f9f9f9" }
+                    },
+                    // LAYER 1: Water (Rivers, Streams, Lakes) - Solid Lines
+                    {
+                        "id": "water-lines",
+                        "source": "paddling",
+                        "source-layer": "finland",
+                        "filter": ["!=", ["get", "land"], "portage"], // Everything except portages
+                        "type": "line",
+                        "layout": { "line-join": "round", "line-cap": "round" },
+                        "paint": {
+                            "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1, 12, 4],
+                            "line-color": [
+                                "match", ["get", "land"],
+                                "lake", "#004477",
+                                "#0077be" // Default River Blue
+                            ]
+                        }
+                    },
+                    // LAYER 2: Portages - Dashed Lines
+                    {
+                        "id": "portage-lines",
+                        "source": "paddling",
+                        "source-layer": "finland",
+                        "filter": ["==", ["get", "land"], "portage"], // Only portages
+                        "type": "line",
+                        "layout": { "line-join": "round", "line-cap": "round" },
+                        "paint": {
+                            "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1, 12, 3],
+                            "line-color": "#ff6600",
+                            "line-dasharray": [2, 2] // Now a simple constant, which IS supported
+                        }
+                    }
+                ]
+            },
+            center: [25.0, 62.0], // Center of Finland
+            zoom: 5
+        });
+
+        // 3. Simple error logger to help us if it still fails
+        map.on('error', (e) => console.error("Map Error:", e.error));
+
+            // Change 'rivers' to an array containing BOTH of your new layer IDs
+            map.on('click', ['water-lines', 'portage-lines'], (e) => {
+                const p = e.features[0].properties;
+                
+                // Debug: Log to console so you can see if the click is registering
+                console.log("Clicked feature:", p);
+
+                new maplibregl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(`
+                        <div style="padding:5px;">
+                            <strong style="color:#0077be;">${p.name || 'Unnamed'}</strong><br>
+                            <small>Type: ${p.land.toUpperCase()}</small>
+                        </div>
+                    `)
+                    .addTo(map);
+            });
+
+            // Update the cursor pointer for both layers too
+            map.on('mouseenter', ['water-lines', 'portage-lines'], () => map.getCanvas().style.cursor = 'pointer');
+            map.on('mouseleave', ['water-lines', 'portage-lines'], () => map.getCanvas().style.cursor = '');
+    </script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Ahti Topology Autopsy (Clickable)</title>
+    <script src='https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css' rel='stylesheet' />
+    <style>
+        body { margin:0; background:#111; color:#eee; font-family:sans-serif; }
+        #map { position:absolute; top:0; bottom:0; width:100%; }
+        #legend {
+            position:absolute; top:20px; left:20px; background:rgba(20,20,20,0.95);
+            padding:15px; border-radius:8px; border:1px solid #444; z-index:1000;
+        }
+        .item { display:flex; align-items:center; margin-bottom:8px; font-size:12px; }
+        .dot { width:12px; height:12px; border-radius:50%; margin-right:10px; border:1px solid #fff; }
+        /* Style for MapLibre Popups */
+        .maplibregl-popup-content { background: #222; color: #fff; border: 1px solid #444; padding: 10px; }
+        .maplibregl-popup-tip { border-top-color: #222; }
+    </style>
+</head>
+<body>
+<div id="legend">
+    <strong>AUTOPSY MODE (Interactive)</strong>
+    <div class="item"><span class="dot" style="background:#ff00ff;"></span> Failed Snap (Pink)</div>
+    <div class="item"><span class="dot" style="background:#00ff00;"></span> Success (Green)</div>
+    <div class="item"><span class="dot" style="background:#ffff00;"></span> Missed Snap (Yellow)</div>
+    <hr style="border:0; border-top:1px solid #333;">
+    <div style="font-size:10px; color:#aaa;"><strong>TIP:</strong> Click dots to see distance info.</div>
+</div>
+<div id="map"></div>
+<script>
+    const map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+        center: [24.0, 60.2], zoom: 11
+    });
+
+    map.on('load', async () => {
+        try {
+            const [resMain, resDebug] = await Promise.all([
+                fetch('./local_data_qa.json'), 
+                fetch('./debug_topology.json')
+            ]);
+            const mainData = await resMain.json();
+            const debugData = await resDebug.json();
+
+            map.addSource('main', { type:'geojson', data:mainData });
+            map.addSource('debug', { type:'geojson', data:debugData });
+
+            // Base Layers
+            map.addLayer({ id:'lakes', type:'fill', source:'main', filter:['==',['get','layer_type'],'lake_gray'], paint:{'fill-color':'#004488','fill-opacity':0.6}});
+            map.addLayer({ id:'rivers', type:'line', source:'main', filter:['!=',['get','environment'],'lake_route'], paint:{'line-color':'#00ffff','line-width':2}});
+            map.addLayer({ id:'dashed', type:'line', source:'main', filter:['==',['get','environment'],'lake_route'], paint:{'line-color':'#3b82f6','line-width':2,'line-dasharray':[2,2]}});
+
+            // DOTS: PINK (All raw ends)
+            map.addLayer({ id:'raw', type:'circle', source:'debug', filter:['==',['get','debug_type'],'raw_end'], paint:{'circle-color':'#ff00ff','circle-radius':6, 'circle-stroke-width':1, 'circle-stroke-color':'#fff'}});
+
+            // DOTS: YELLOW (Those that were close but didn't make the 300m cut)
+            map.addLayer({ id:'missed', type:'circle', source:'debug', filter:['==',['get','debug_type'],'missed'], paint:{'circle-color':'#ffff00','circle-radius':5, 'circle-stroke-width':2, 'circle-stroke-color':'#fff'}});
+
+            // DOTS: GREEN (Successful candidates)
+            map.addLayer({ id:'cands', type:'circle', source:'debug', filter:['==',['get','debug_type'],'candidate'], paint:{'circle-color':'#00ff00','circle-radius':4, 'circle-stroke-width':1, 'circle-stroke-color':'#000'}});
+
+            // INTERACTION LOGIC
+            const debugLayers = ['raw', 'missed', 'cands'];
+            
+            debugLayers.forEach(layer => {
+                // Change cursor on hover
+                map.on('mouseenter', layer, () => map.getCanvas().style.cursor = 'pointer');
+                map.on('mouseleave', layer, () => map.getCanvas().style.cursor = '');
+
+                // Click event for the popups
+                map.on('click', layer, (e) => {
+                    const props = e.features[0].properties;
+                    let html = `<strong>Type:</strong> ${props.debug_type}<br>`;
+                    if (props.dist) html += `<strong>Dist to Lake:</strong> ${props.dist}m`;
+                    else html += `<em>Status: Not snapped</em>`;
+
+                    new maplibregl.Popup()
+                        .setLngLat(e.lngLat)
+                        .setHTML(html)
+                        .addTo(map);
+                });
+            });
+
+        } catch (e) { console.error("Viewer error:", e); }
+    });
+</script>
+</body>
+</html>

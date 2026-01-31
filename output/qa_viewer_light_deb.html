@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ahti Paddle Map - QA Viewer (v17 Connectivity Fix)</title>
+    <script src='https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css' rel='stylesheet' />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+        }
+        
+        #map { 
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-width: 320px;
+            max-height: 85vh;
+            overflow-y: auto;
+            z-index: 1000;
+        }
+        
+        #controls h2 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            color: #1f2937;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+        
+        .layer-control {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .layer-control:hover {
+            background: #f3f4f6;
+        }
+        
+        .layer-control input[type="checkbox"] {
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        
+        .layer-control label {
+            cursor: pointer;
+            flex: 1;
+            font-size: 0.9em;
+        }
+        
+        .layer-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75em;
+            margin-left: 5px;
+        }
+        
+        .badge-debug { background: #fae8ff; color: #a21caf; }
+        .badge-primary { background: #dbeafe; color: #1e40af; }
+        
+        #inspector {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 400px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        
+        #inspector.active {
+            display: block;
+        }
+
+        #legend {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            font-size: 0.85em;
+            z-index: 999;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div id="controls">
+        <h2>🗺️ Layer Controls</h2>
+        
+        <div class="control-section">
+            <h3 style="font-size:0.9em; margin:10px 0;">Debug Layers</h3>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-terminals" checked>
+                <label for="layer-terminals">
+                    River Terminals
+                    <span class="layer-badge badge-debug">Magenta Dots</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <h3 style="font-size:0.9em; margin:10px 0;">Primary Layers</h3>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-segments" checked>
+                <label for="layer-segments">Segments</label>
+            </div>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-labels" checked>
+                <label for="layer-labels">Labels</label>
+            </div>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-lakes" checked>
+                <label for="layer-lakes">Lakes</label>
+            </div>
+        </div>
+        
+        <button id="btn-reset-view">Reset View</button>
+    </div>
+    
+    <div id="inspector">
+        <h3>Segment Details</h3>
+        <div id="inspector-content">Click a segment to inspect</div>
+    </div>
+
+    <script>
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: {
+                version: 8,
+                // FIX: Standard MapLibre glyphs for label rendering
+                glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+                sources: {
+                    'carto-light': {
+                        type: 'raster',
+                        tiles: ['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'],
+                        tileSize: 256,
+                        attribution: '© CARTO'
+                    }
+                },
+                layers: [{
+                    id: 'background',
+                    type: 'raster',
+                    source: 'carto-light'
+                }]
+            },
+            center: [24.3, 60.2],
+            zoom: 10
+        });
+        
+        map.on('load', async () => {
+            try {
+                const response = await fetch('./local_data_qa.json');
+                const data = await response.json();
+                map.addSource('paddle-data', { type: 'geojson', data: data });
+                
+                // 1. LAKES
+                map.addLayer({
+                    id: 'lakes', type: 'fill', source: 'paddle-data',
+                    filter: ['==', ['get', 'layer_type'], 'lake_gray'],
+                    paint: { 'fill-color': '#a5d8ff', 'fill-opacity': 0.3 }
+                });
+                
+                // 2. SEGMENTS
+                map.addLayer({
+                    id: 'segments', type: 'line', source: 'paddle-data',
+                    filter: ['==', ['get', 'layer_type'], 'segment'],
+                    paint: {
+                        'line-color': [
+                            'case',
+                            ['==', ['get', 'type'], 'lake_crossing'], '#0ea5e9',
+                            ['==', ['get', 'type'], 'dam_crossing'], '#dc2626',
+                            '#16a34a'
+                        ],
+                        'line-width': 3
+                    }
+                });
+
+                // 3. DEBUG: RIVER TERMINALS (The magenta dots to track disconnections)
+                map.addLayer({
+                    id: 'terminals', type: 'circle', source: 'paddle-data',
+                    filter: ['==', ['get', 'layer_type'], 'qa_terminal'],
+                    paint: { 
+                        'circle-radius': 6, 
+                        'circle-color': '#ff00ff', 
+                        'circle-stroke-width': 2, 
+                        'circle-stroke-color': '#fff' 
+                    }
+                });
+                
+                // 4. LABELS (Noto Sans Regular fix)
+                map.addLayer({
+                    id: 'labels', type: 'symbol', source: 'paddle-data',
+                    filter: ['==', ['get', 'layer_type'], 'label_point'],
+                    layout: { 
+                        'text-field': ['get', 'name'], 
+                        'text-font': ['Noto Sans Regular'], 
+                        'text-size': 12, 
+                        'text-anchor': 'center' 
+                    },
+                    paint: { 'text-color': '#1f2937', 'text-halo-color': '#ffffff', 'text-halo-width': 1 }
+                });
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        });
+        
+        // Toggle Controls
+        document.querySelectorAll('.layer-control input').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const layerId = e.target.id.replace('layer-', '');
+                const targetLayer = (layerId === 'terminals') ? 'terminals' : layerId;
+                if (map.getLayer(targetLayer)) {
+                    map.setLayoutProperty(targetLayer, 'visibility', e.target.checked ? 'visible' : 'none');
+                }
+            });
+        });
+        
+        document.getElementById('btn-reset-view').addEventListener('click', () => {
+            map.flyTo({ center: [24.3, 60.2], zoom: 10 });
+        });
+    </script>
+</body>
+</html>

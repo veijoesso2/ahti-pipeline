@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ahti Paddle Map - QA Viewer (v15)</title>
+    <script src='https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css' rel='stylesheet' />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+        }
+        
+        #map { 
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+        
+        /* Control Panel */
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-width: 320px;
+            max-height: 85vh;
+            overflow-y: auto;
+            z-index: 1000;
+        }
+        
+        #controls h2 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            color: #1f2937;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+        
+        .control-section {
+            margin-bottom: 20px;
+        }
+        
+        .control-section h3 {
+            font-size: 0.95em;
+            color: #4b5563;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .layer-control {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .layer-control:hover {
+            background: #f3f4f6;
+        }
+        
+        .layer-control input[type="checkbox"] {
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        
+        .layer-control label {
+            cursor: pointer;
+            flex: 1;
+            font-size: 0.9em;
+        }
+        
+        .layer-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75em;
+            margin-left: 5px;
+        }
+        
+        .badge-primary { background: #dbeafe; color: #1e40af; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .badge-critical { background: #fee2e2; color: #991b1b; }
+        .badge-reference { background: #e5e7eb; color: #374151; }
+        .badge-new { background: #f3e8ff; color: #7e22ce; }
+        
+        /* Inspector Panel */
+        #inspector {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 400px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        
+        #inspector.active {
+            display: block;
+        }
+        
+        #inspector h3 {
+            margin-bottom: 15px;
+            color: #1f2937;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        #inspector-close {
+            cursor: pointer;
+            color: #6b7280;
+            font-size: 1.5em;
+            line-height: 1;
+        }
+        
+        .inspector-prop {
+            display: flex;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+        }
+        
+        .inspector-prop-key {
+            font-weight: 600;
+            color: #4b5563;
+            min-width: 140px;
+        }
+        
+        .inspector-prop-value {
+            color: #1f2937;
+            flex: 1;
+        }
+        
+        .score-bar {
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+        
+        .score-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+            transition: width 0.3s;
+        }
+        
+        /* QA Status */
+        #qa-status {
+            background: #f3f4f6;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 0.85em;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+        
+        .status-value {
+            font-weight: 600;
+        }
+        
+        .status-pass { color: #10b981; }
+        .status-warn { color: #f59e0b; }
+        .status-fail { color: #ef4444; }
+        
+        /* Legend */
+        #legend {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            font-size: 0.85em;
+            max-width: 250px;
+            z-index: 999;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 3px;
+            margin-right: 8px;
+            border-radius: 2px;
+            display: block;
+        }
+        
+        .legend-dashed {
+            border-bottom: 2px dashed;
+            background: none;
+            height: 0;
+            margin-bottom: 2px;
+        }
+        
+        /* Buttons */
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            background: #5568d3;
+        }
+        
+        button.secondary {
+            background: #6b7280;
+        }
+        
+        button.secondary:hover {
+            background: #4b5563;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div id="controls">
+        <h2>🗺️ Layer Controls</h2>
+        
+        <div id="qa-status">
+            <strong>QA Status</strong>
+            <div class="status-item">
+                <span>Passed:</span>
+                <span class="status-value status-pass" id="qa-passed">-</span>
+            </div>
+            <div class="status-item">
+                <span>Warnings:</span>
+                <span class="status-value status-warn" id="qa-warnings">-</span>
+            </div>
+            <div class="status-item">
+                <span>Failures:</span>
+                <span class="status-value status-fail" id="qa-failures">-</span>
+            </div>
+        </div>
+        
+        <div class="control-section">
+            <h3>Primary Layers</h3>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-segments" checked>
+                <label for="layer-segments">
+                    River Segments
+                    <span class="layer-badge badge-primary">Primary</span>
+                </label>
+            </div>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-labels" checked>
+                <label for="layer-labels">Area Labels</label>
+            </div>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-lakes" checked>
+                <label for="layer-lakes">Lakes (Background)</label>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <h3>Topology (v15)</h3>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-culverts" checked>
+                <label for="layer-culverts">
+                    Healed Culverts
+                    <span class="layer-badge badge-new">Fix</span>
+                </label>
+            </div>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-road-portage" checked>
+                <label for="layer-road-portage">
+                    Road Portages
+                    <span class="layer-badge badge-new">Smart</span>
+                </label>
+            </div>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-direct-portage" checked>
+                <label for="layer-direct-portage">Direct Portages</label>
+            </div>
+        </div>
+        
+        <div class="control-section">
+            <h3>QA Debug Layers</h3>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-dangling">
+                <label for="layer-dangling">
+                    Dangling Endpoints
+                    <span class="layer-badge badge-critical">Critical</span>
+                </label>
+            </div>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-extreme">
+                <label for="layer-extreme">
+                    Extreme Scores
+                    <span class="layer-badge badge-warning">Warning</span>
+                </label>
+            </div>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-sinuosity">
+                <label for="layer-sinuosity">Sinuosity Issues</label>
+            </div>
+        </div>
+        
+        <div class="control-section">
+            <h3>Reference Layers</h3>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-pois">
+                <label for="layer-pois">
+                    POIs
+                    <span class="layer-badge badge-reference">Ref</span>
+                </label>
+            </div>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-rapids">
+                <label for="layer-rapids">Rapids Features</label>
+            </div>
+            <div class="layer-control">
+                <input type="checkbox" id="layer-official">
+                <label for="layer-official">Official Routes</label>
+            </div>
+        </div>
+        
+        <button id="btn-reset-view">Reset View</button>
+        <button id="btn-qa-report" class="secondary">View QA Report</button>
+    </div>
+    
+    <div id="inspector">
+        <h3>
+            <span id="inspector-title">Segment Details</span>
+            <span id="inspector-close">×</span>
+        </h3>
+        <div id="inspector-content">
+            <p style="color: #6b7280;">Click a segment to inspect</p>
+        </div>
+    </div>
+    
+    <div id="legend">
+        <strong style="display: block; margin-bottom: 8px;">Route Colors</strong>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #16a34a; height: 4px;"></div>
+            <span>High Fun (80-100)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #eab308; height: 4px;"></div>
+            <span>Medium Fun (50-79)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #dc2626; height: 4px;"></div>
+            <span>Low Fun (0-49)</span>
+        </div>
+        <hr style="margin: 10px 0; border: none; border-top: 1px solid #e5e7eb;">
+        
+        <div class="legend-item">
+            <div class="legend-color" style="background: #9333ea; height: 4px;"></div>
+            <span>Healed Culvert</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color legend-dashed" style="border-color: #f97316;"></div>
+            <span>Road Portage (>500m)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color legend-dashed" style="border-color: #0ea5e9;"></div>
+            <span>Direct Portage</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color legend-dashed" style="border-color: #dc2626;"></div>
+            <span>Dam / Obstacle</span>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize map
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: {
+                version: 8,
+                sources: {
+                    'carto-light': {
+                        type: 'raster',
+                        tiles: ['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'],
+                        tileSize: 256,
+                        attribution: '© OpenStreetMap contributors, © CARTO'
+                    }
+                },
+                layers: [{
+                    id: 'background',
+                    type: 'raster',
+                    source: 'carto-light'
+                }]
+            },
+            center: [26.0, 64.0], // Center of Finland
+            zoom: 5
+        });
+        
+        let selectedFeature = null;
+        
+        map.on('load', async () => {
+            // 1. Load Main QA Data
+            try {
+                const response = await fetch('./local_data_qa.json');
+                const data = await response.json();
+                
+                if (data.metadata && data.metadata.qa_status) {
+                    const qa = data.metadata.qa_status;
+                    document.getElementById('qa-passed').textContent = qa.passed;
+                    document.getElementById('qa-warnings').textContent = qa.warnings;
+                    document.getElementById('qa-failures').textContent = qa.failures;
+                }
+                
+                map.addSource('paddle-data', { type: 'geojson', data: data });
+                addMainLayers();
+                
+            } catch (error) {
+                console.error('Error loading main QA data:', error);
+            }
+
+            // 2. Load v15 Debug Data (Topology)
+            try {
+                const resV15 = await fetch('./debug_data_v15.json');
+                const dataV15 = await resV15.json();
+                
+                map.addSource('v15-debug', { type: 'geojson', data: dataV15 });
+                addV15Layers();
+                
+            } catch (error) {
+                console.warn('v15 debug data not found. Run scripts/export_debug_v15.py to visualize new topology.');
+            }
+        });
+        
+        function addV15Layers() {
+            // v15: CULVERTS
+            map.addLayer({
+                id: 'culverts', type: 'line', source: 'v15-debug',
+                filter: ['==', ['get', 'name'], 'Culvert'],
+                paint: { 'line-color': '#9333ea', 'line-width': 4 }
+            });
+            // v16: DAM PORTAGES (Red Danger)
+            map.addLayer({
+                id: 'portage-dam', 
+                type: 'line', 
+                source: 'v15-debug', // It uses the same debug source, just filter by name
+                filter: ['==', ['get', 'name'], 'Dam Portage'],
+                paint: { 
+                    'line-color': '#dc2626', // Bright Red
+                    'line-width': 4, 
+                    'line-dasharray': [1, 1] // Tight dots (danger zone)
+                }
+            });
+            // v15: ROAD PORTAGES
+            map.addLayer({
+                id: 'portage-road', type: 'line', source: 'v15-debug',
+                filter: ['==', ['get', 'name'], 'Road Portage'],
+                paint: { 
+                    'line-color': '#f97316', 
+                    'line-width': 3, 
+                    'line-dasharray': [2, 2] 
+                }
+            });
+
+            // v15: DIRECT PORTAGES
+            map.addLayer({
+                id: 'portage-direct', type: 'line', source: 'v15-debug',
+                filter: ['==', ['get', 'name'], 'Portage'],
+                paint: { 
+                    'line-color': '#0ea5e9', 
+                    'line-width': 3, 
+                    'line-dasharray': [2, 2] 
+                }
+            });
+        }
+
+        function addMainLayers() {
+            // LAKES
+            map.addLayer({
+                id: 'lakes', type: 'fill', source: 'paddle-data',
+                filter: ['==', ['get', 'layer_type'], 'lake_gray'],
+                paint: { 'fill-color': '#a5d8ff', 'fill-opacity': 0.3 }
+            });
+            
+            // SEGMENTS
+            map.addLayer({
+                id: 'segments', type: 'line', source: 'paddle-data',
+                filter: ['==', ['get', 'layer_type'], 'segment'],
+                paint: {
+                    'line-color': [
+                        'case',
+                        ['==', ['get', 'environment'], 'river_official'], '#7c3aed',
+                        ['==', ['get', 'environment'], 'lake_route'], '#0ea5e9',
+                        ['>=', ['get', 'fun_score'], 80], '#16a34a',
+                        ['>=', ['get', 'fun_score'], 50], '#eab308',
+                        '#dc2626'
+                    ],
+                    'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2, 12, 4, 16, 6],
+                    'line-opacity': 0.6 // Slightly transparent to let v15 overlays shine
+                }
+            });
+            
+            // LABELS
+            map.addLayer({
+                id: 'labels', type: 'symbol', source: 'paddle-data',
+                filter: ['==', ['get', 'layer_type'], 'label_point'],
+                layout: { 'text-field': ['get', 'name'], 'text-size': 12, 'text-anchor': 'center' },
+                paint: { 'text-color': '#1f2937', 'text-halo-color': '#ffffff', 'text-halo-width': 1 }
+            });
+            
+            // QA LAYERS
+            map.addLayer({
+                id: 'qa-dangling', type: 'circle', source: 'paddle-data',
+                filter: ['==', ['get', 'layer_type'], 'qa_dangling'],
+                paint: { 'circle-radius': 6, 'circle-color': '#ef4444', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' },
+                layout: { 'visibility': 'none' }
+            });
+            
+            map.addLayer({
+                id: 'qa-extreme', type: 'circle', source: 'paddle-data',
+                filter: ['==', ['get', 'layer_type'], 'qa_extreme_score'],
+                paint: { 'circle-radius': 5, 'circle-color': '#f59e0b', 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' },
+                layout: { 'visibility': 'none' }
+            });
+
+            map.addLayer({
+                id: 'qa-sinuosity', type: 'line', source: 'paddle-data',
+                filter: ['==', ['get', 'layer_type'], 'qa_sinuosity'],
+                paint: { 'line-color': '#8b5cf6', 'line-width': 2, 'line-dasharray': [2, 2] },
+                layout: { 'visibility': 'none' }
+            });
+
+            // REFERENCE LAYERS
+            map.addLayer({
+                id: 'qa-pois', type: 'circle', source: 'paddle-data',
+                filter: ['==', ['get', 'layer_type'], 'qa_poi'],
+                paint: { 'circle-radius': 4, 'circle-color': '#10b981', 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' },
+                layout: { 'visibility': 'none' }
+            });
+
+            map.addLayer({
+                id: 'qa-rapids', type: 'circle', source: 'paddle-data',
+                filter: ['==', ['get', 'layer_type'], 'qa_rapids'],
+                paint: { 'circle-radius': 5, 'circle-color': '#06b6d4', 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' },
+                layout: { 'visibility': 'none' }
+            });
+
+            map.addLayer({
+                id: 'qa-official', type: 'line', source: 'paddle-data',
+                filter: ['==', ['get', 'layer_type'], 'qa_official_route'],
+                paint: { 'line-color': '#8b5cf6', 'line-width': 3, 'line-opacity': 0.5 },
+                layout: { 'visibility': 'none' }
+            });
+            
+            setupInteractions();
+        }
+        
+        function setupInteractions() {
+            map.on('click', 'segments', (e) => {
+                if (e.features.length > 0) showInspector(e.features[0]);
+            });
+            
+            map.on('mouseenter', 'segments', () => { map.getCanvas().style.cursor = 'pointer'; });
+            map.on('mouseleave', 'segments', () => { map.getCanvas().style.cursor = ''; });
+        }
+        
+        function showInspector(feature) {
+            const props = feature.properties;
+            const inspector = document.getElementById('inspector');
+            const content = document.getElementById('inspector-content');
+            
+            let html = `
+                <div class="inspector-prop"><div class="inspector-prop-key">Name:</div><div class="inspector-prop-value"><strong>${props.name}</strong></div></div>
+                <div class="inspector-prop"><div class="inspector-prop-key">Environment:</div><div class="inspector-prop-value">${props.environment}</div></div>
+                <hr style="margin: 12px 0; border: none; border-top: 1px solid #e5e7eb;">
+                <div class="inspector-prop"><div class="inspector-prop-key">Fun Score:</div><div class="inspector-prop-value">${props.fun_score}/100 <div class="score-bar"><div class="score-fill" style="width: ${props.fun_score}%"></div></div></div></div>
+                <div class="inspector-prop"><div class="inspector-prop-key">Length:</div><div class="inspector-prop-value">${(props.length_m / 1000).toFixed(2)} km</div></div>
+                <div class="inspector-prop"><div class="inspector-prop-key">Features:</div><div class="inspector-prop-value">${props.has_rapids ? '🌊 Rapids ' : ''}${props.is_official_route ? '✓ Official ' : ''}</div></div>
+            `;
+            
+            content.innerHTML = html;
+            inspector.classList.add('active');
+            
+            if (selectedFeature) map.setFeatureState({ source: 'paddle-data', id: selectedFeature }, { selected: false });
+            selectedFeature = feature.id;
+        }
+        
+        // Layer Control Logic
+        document.querySelectorAll('.layer-control input').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const layerId = e.target.id.replace('layer-', '');
+                const layerMap = {
+                    'segments': 'segments', 'labels': 'labels', 'lakes': 'lakes',
+                    'dangling': 'qa-dangling', 'extreme': 'qa-extreme', 'sinuosity': 'qa-sinuosity',
+                    'pois': 'qa-pois', 'rapids': 'qa-rapids', 'official': 'qa-official',
+                    // v15 Mappings
+                    'culverts': 'culverts',
+                    'road-portage': 'portage-road',
+                    'direct-portage': 'portage-direct'
+                };
+                
+                const visibility = e.target.checked ? 'visible' : 'none';
+                if (layerMap[layerId]) {
+                    if (map.getLayer(layerMap[layerId])) {
+                        map.setLayoutProperty(layerMap[layerId], 'visibility', visibility);
+                    }
+                }
+            });
+        });
+        
+        document.getElementById('inspector-close').addEventListener('click', () => {
+            document.getElementById('inspector').classList.remove('active');
+        });
+        
+        document.getElementById('btn-reset-view').addEventListener('click', () => {
+            map.flyTo({ center: [26.0, 64.0], zoom: 5 });
+        });
+    </script>
+</body>
+</html>
